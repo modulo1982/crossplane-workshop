@@ -1,0 +1,8 @@
+apiVersion: workshop.tkp.nl/v1alpha1
+kind: Bucket
+metadata:
+  name: timo-workshop-bucket
+spec:
+  tags:
+    Afdeling: it-management
+    Team: IT4IT

@@ -1,0 +1,46 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: buckets.workshop.tkp.nl
+spec:
+  claimNames:
+    kind: BucketClaim
+    plural: bucketclaims
+  defaultCompositeDeletePolicy: Foreground
+  defaultCompositionUpdatePolicy: Automatic
+  group: workshop.tkp.nl
+  names:
+    kind: Bucket
+    plural: buckets
+  versions:
+    - name: v1alpha1
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - tags
+              properties:
+                tags:
+                  type: object
+                  required:
+                    - Team
+                    - Afdeling
+                  properties:
+                    Team:
+                      type: string
+                    Afdeling:
+                      type: string
+      served: true
+---
+apiVersion: workshop.tkp.nl/v1alpha1
+kind: Bucket
+metadata:
+  name: timo-workshop-bucket
+spec:
+  tags:
+    Afdeling: it-management
+    Team: IT4IT

@@ -22,7 +22,6 @@ echo "
 |kubectl CLI     |Yes                  |'https://kubernetes.io/docs/tasks/tools/#kubectl'  |
 |crossplane CLI  |Yes                  |'https://docs.crossplane.io/latest/cli'            |
 |yq CLI          |Yes                  |'https://github.com/mikefarah/yq#install'          |
-|AWS account with admin permissions|If using AWS|'https://aws.amazon.com'                  |
 |AWS CLI         |If using AWS         |'https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html'|
 
 If you are running this script from **Nix shell**, most of the requirements are already set with the exception of **Docker** and the **hyperscaler account**.
@@ -39,8 +38,6 @@ Do you have those tools installed?
 
 kind create cluster --config kind.yaml
 
-kubectl create namespace a-team
-
 ##############
 # Crossplane #
 ##############
@@ -48,9 +45,6 @@ kubectl create namespace a-team
 helm upgrade --install crossplane crossplane \
     --repo https://charts.crossplane.io/stable \
     --namespace crossplane-system --create-namespace --wait
-
-HYPERSCALER="AWS"
-echo "export HYPERSCALER=AWS" >> .env
 
 AWS_ACCESS_KEY_ID=$(gum input --placeholder "AWS Access Key ID" --value "$AWS_ACCESS_KEY_ID")
 echo "export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> .env

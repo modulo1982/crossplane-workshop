@@ -1,0 +1,50 @@
+apiVersion: iam.aws.upbound.io/v1beta1
+kind: Role
+metadata:
+  name: timo-workshop-role
+spec:
+  forProvider:
+    assumeRolePolicy: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    inlinePolicy:
+      - name: inlinePolicy
+        policy: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::timo-workshop-bucket/jokes.txt"
+              }
+            ]
+          }
+---
+apiVersion: lambda.aws.upbound.io/v1beta1
+kind: Function
+metadata:
+  name: timo-workshop-lambda
+spec:
+  forProvider:
+    handler: jokes.lambda_handler
+    packageType: Zip
+    region: eu-west-1
+    role: arn:aws:iam::851725299431:role/timo-workshop-role
+    runtime: python3.9
+    s3Bucket: timo-workshop-bucket
+    s3Key: jokes_function.zip
+    timeout: 60
+    environment:
+      - variables:
+          BUCKET_NAME: timo-workshop-bucket

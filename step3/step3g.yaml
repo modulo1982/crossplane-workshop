@@ -1,0 +1,110 @@
+
+apiVersion: workshop.tkp.nl/v1alpha1
+kind: BucketClaim
+metadata:
+  name: timo-workshop-bucket
+spec:
+  tags:
+    Afdeling: it-management
+    Team: IT4IT
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  labels:
+    provider: aws
+  name: buckets
+spec:
+  compositeTypeRef:
+    apiVersion: workshop.tkp.nl/v1alpha1
+    kind: Bucket
+  mode: Pipeline
+  pipeline:
+    - functionRef:
+        name: function-environment-configs
+      step: environmentConfigs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - ref:
+                name: tkp
+    - functionRef:
+        name: function-kcl
+      step: create-resources
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
+        metadata:
+          name: basic
+        spec:
+          source: |-
+            
+            import yaml
+            
+            env = option("params").ctx['apiextensions.crossplane.io/environment']
+            oxr = option("params").oxr
+            name = oxr.spec.claimRef.name
+            spec = oxr.spec
+            
+            items = [
+                {
+                    apiVersion = "s3.aws.upbound.io/v1beta2"
+                    kind = "Bucket"
+                    metadata = {
+                        name = name
+                    }
+                    spec = {
+                        deletionPolicy = "Orphan"
+                        forProvider = {
+                            region = env["aws.region"]
+                            tags = spec.tags
+                        }
+                    }
+                }
+                {
+                    apiVersion = "s3.aws.upbound.io/v1beta2"
+                    kind = "BucketVersioning"
+                    metadata = {
+                        name = "${name}-versioning"
+                    }
+                    spec = {
+                        forProvider = {
+                            region = env["aws.region"]
+                            bucketSelector.matchControllerRef = True
+                            versioningConfiguration = {
+                                status = "Enabled"
+                            }
+                        }
+                    }
+                }
+                {
+                    apiVersion = "s3.aws.upbound.io/v1beta2"
+                    kind = "BucketLifecycleConfiguration"
+                    metadata = {
+                        name = "${name}-lifecycle-policy"
+                    }
+                    spec = {
+                        forProvider = {
+                            region = env["aws.region"]
+                            bucketSelector.matchControllerRef = True
+                            $rule = [
+                                {
+                                    id = "archive"
+                                    $filter = {
+                                        prefix = "/"
+                                    }
+                                    noncurrentVersionExpiration = {
+                                        noncurrentDays = 90
+                                    }
+                                    status = "Enabled"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+    - functionRef:
+        name: function-auto-ready
+      step: automatically-detect-ready-composed-resources

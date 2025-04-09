@@ -1,0 +1,111 @@
+apiVersion: pkg.crossplane.io/v1beta1
+kind: Function
+metadata:
+  name: function-auto-ready
+spec:
+  package: xpkg.upbound.io/upbound/function-auto-ready:v0.4.2
+---
+apiVersion: pkg.crossplane.io/v1beta1
+kind: Function
+metadata:
+  name: function-kcl
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.11.3
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  labels:
+    provider: aws
+  name: buckets
+spec:
+  compositeTypeRef:
+    apiVersion: workshop.tkp.nl/v1alpha1
+    kind: Bucket
+  mode: Pipeline
+  pipeline:
+    - functionRef:
+        name: function-kcl
+      step: create-resources
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
+        metadata:
+          name: basic
+        spec:
+          source: |-
+            items = [
+                {
+                    apiVersion = "s3.aws.upbound.io/v1beta2"
+                    kind = "Bucket"
+                    metadata = {
+                        name = "timo-workshop-bucket"
+                        labels = {
+                            "tkp.nl/bucket" = "timo-workshop-bucket"
+                        }
+                    }
+                    spec = {
+                        deletionPolicy = "Orphan"
+                        forProvider = {
+                            region = "eu-west-1"
+                            tags = {
+                                "IAC-tool" = "crossplane"
+                                Afdeling = "IT4IT"
+                                Medewerker = "kanters.t@tkppensioen.nl"
+                            }
+                        }
+                    }
+                }
+                {
+                    apiVersion = "s3.aws.upbound.io/v1beta2"
+                    kind = "BucketVersioning"
+                    metadata = {
+                        name = "timo-workshop-bucket-versioning"
+                    }
+                    spec = {
+                        forProvider = {
+                            region = "eu-west-1"
+                            bucketSelector = {
+                                matchLabels = {
+                                    "tkp.nl/bucket" = "timo-workshop-bucket"
+                                }
+                            }
+                            versioningConfiguration = {
+                                status = "Enabled"
+                            }
+                        }
+                    }
+                }
+                {
+                    apiVersion = "s3.aws.upbound.io/v1beta2"
+                    kind = "BucketLifecycleConfiguration"
+                    metadata = {
+                        name = "timo-workshop-bucket-lifecycle-policy"
+                    }
+                    spec = {
+                        forProvider = {
+                            region = "eu-west-1"
+                            bucketSelector = {
+                                matchLabels = {
+                                    "tkp.nl/bucket" = "timo-workshop-bucket"
+                                }
+                            }
+                            $rule = [
+                                {
+                                    id = "archive"
+                                    $filter = {
+                                        prefix = "/"
+                                    }
+                                    noncurrentVersionExpiration = {
+                                        noncurrentDays = 90
+                                    }
+                                    status = "Enabled"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+    - functionRef:
+        name: function-auto-ready
+      step: automatically-detect-ready-composed-resources

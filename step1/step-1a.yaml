@@ -1,0 +1,8 @@
+apiVersion: s3.aws.upbound.io/v1beta2
+kind: Bucket
+metadata:
+  name: timo-workshop-bucket
+spec:
+  deletionPolicy: Orphan
+  forProvider:
+    region: eu-west-1

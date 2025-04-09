@@ -1,0 +1,12 @@
+apiVersion: s3.aws.upbound.io/v1beta2
+kind: Bucket
+metadata:
+  name: timo-workshop-bucket
+spec:
+  deletionPolicy: Orphan
+  forProvider:
+    region: eu-west-1
+    tags:
+      IAC-tool: crossplane
+      Afdeling: IT4IT
+      Medewerker: kanters.t@tkppensioen.nl
