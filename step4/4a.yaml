@@ -1,0 +1,14 @@
+apiVersion: workshop.tkp.nl/v1alpha1
+kind: Lambda
+metadata:
+  name: timo-workshop-lambda
+spec:
+  runtime:
+    language: python
+    version: '3.9'
+  code:
+    zipFile: s3://timo-workshop-bucket/jokes_function.zip
+    function: jokes.lambda_handler
+  tags:
+    Afdeling: it-management
+    Team: IT4IT

@@ -1,0 +1,55 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: lambdas.workshop.tkp.nl
+spec:
+  claimNames:
+    kind: LambdaClaim
+    plural: lambdaclaims
+  defaultCompositeDeletePolicy: Foreground
+  defaultCompositionUpdatePolicy: Automatic
+  group: workshop.tkp.nl
+  names:
+    kind: Lambda
+    plural: lambdas
+  versions:
+    - name: v1alpha1
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - tags
+              properties:
+                runtime:
+                  type: object
+                  properties:
+                    language:
+                      type: string
+                      enum:
+                        - python
+                        - javascript
+                    version:
+                      type: string
+                code:
+                  type: object
+                  properties:
+                    zipFile:
+                      type: string
+                      pattern: ^s3://[a-zA-Z0-9\-/]+\.zip$
+                    function:
+                      type: string
+                tags:
+                  type: object
+                  required:
+                    - Team
+                    - Afdeling
+                  properties:
+                    Team:
+                      type: string
+                    Afdeling:
+                      type: string
+      served: true

@@ -4,19 +4,37 @@
 ########################
     
     nix-shell --run $SHELL
-    chmod +x setup.sh
+    chmod +x setup.sh setup-creds.sh
     ./setup.sh
-    source .env
+    ./setup-creds.sh
 
 Test that everything works:
 
-    aws iam list-users
+    aws-vault exec workshop-sandbox-2 --
+    aws lambda list-functions
     docker ps
-    kubectl get all -A
+    kubectl get pods -n crossplane-system
+    kubens crossplane-system
+
+Controller het secret:
+
+    kubectl get secret aws-creds -o json | jq -r .data.creds | base64 -d
+    
+Zou een output moeten laten zien als:
+
+    [default]
+    aws_access_key_id = ASIA4MTWIV3T2IAQZWTT
+    aws_secret_access_key = heel-geheim-token
+    aws_session_token = heel-lang-token
+
 
 ########################
 # Crossplane Providers #
 ########################
+
+Lets replace timo-workshop with $USER-workshop for all example files.
+
+    find . -type f \( -name '*.yaml' -o -name '*.md' \) -exec sed -i '' "s/timo-workshop/${USER}-workshop/g" {} +
 
 Install the provider for AWS.
 
@@ -24,30 +42,35 @@ Install the provider for AWS.
     kubectl apply --filename providers/aws-s3.yaml
     kubectl get pkgrev
 
-Repeat the command until all providers are healthy.
 Learn about Providers and ProviderFamilies.
 
-    kubectl get pkgrev
+    kubectl wait --for=condition=healthy --timeout=240s provider/upbound-provider-family-aws
+    kubectl wait --for=condition=healthy --timeout=240s provider/provider-aws-s3
     kubectl get crd | grep upbound.io
 
 # Step 1 Basic Managed Resource
 
-## step-1a 
-Install some managed resources
+    cd step1
 
-    cat step1/step-1a.yaml
-    kubectl apply -f step1/step-1a.yaml
+## 1a - Install some managed resources
+
+    cat 1a.yaml
+    kubectl apply -f 1a.yaml
     kubectl get managed
 
-Check the status of the managed objects.
 Check the logs of the provider pods.
+Check the status of the managed objects.
+Check the events
+
+    kubectl get events -n default
+    kubectl get bucket.s3.aws.upbound.io/timo-workshop-bucket -o json | jq .status
 
 Perform the final configuration of the provider
 
-    cat providers/aws-config.yaml
-    kubectl apply --filename providers/aws-config.yaml
+    cat ../providers/aws-config.yaml
+    kubectl apply --filename ../providers/aws-config.yaml
 
-    ./setups-creds.sh
+    ../setups-creds.sh
     kubectl get secret aws-creds -n crossplane-system -o jsonpath='{.data.creds}' | base64 --decode
     
     kubectl get managed
@@ -60,83 +83,102 @@ Check the logs of the provider pods.
 So the main takeaway here is that you describe your desired state in the spec.atProvider section and the actual state is
 represented by spec.status.atProvider. As long as nothing is inherently wrong these should be pretty much the same.
 
-## Step 1b
+## 1b - Modify a resource
 
-    diff step1/step-1a.yaml step1/step-1b.yaml
-    cat step1/step-1b.yaml
-    kubectl apply --filename step1/step-1b.yaml
+    diff 1a.yaml 1b.yaml
+    cat 1b.yaml
+    kubectl apply --filename 1b.yaml
     kubectl get managed
+
+You can control how Crossplane interacts through management policies. That that is an advanced topic.
+
+https://docs.crossplane.io/latest/concepts/managed-resources
+
 
 #####################################
 # Step 2 Multiple managed resources #
 #####################################
 
-## Step 2a
+    cd ..
+    cd step2
 
-    Add LifecyclePolicy to Bucket
+## 2a - Add LifecyclePolicy to Bucket
 
-## Step 2b
+    cat 2a.yaml
+    kubectl apply -f 2a.yaml
+
+## 2b - Making a Lambda Function
 
 Lets make it more interesting by making a Lambda function.
 
 Copy files to S3 bucket:
 
-    aws s3 cp jokes/jokes_function.zip s3://timo-workshop-bucket/                                                                                                                                  │
-    aws s3 cp jokes/jokes.txt s3://timo-workshop-bucket/
+    aws s3 cp ../jokes/jokes_function.zip s3://timo-workshop-bucket/                                                                                                                                  │
+    aws s3 cp ../jokes/jokes.txt s3://timo-workshop-bucket/
 
 Apply Lambda and Role
 
-    cat step2/step-2b.yaml
-    kubectl apply -f step2/step-2b.yaml
+    cat 2b.yaml
+    kubectl apply -f 2b.yaml
+
+Kak!
+
+    kubectl apply -f ../providers/aws-lambda.yaml
+    kubectl apply -f ../providers/aws-iam.yaml
+
+    kubectl apply -f 2b.yaml
     kubectl get managed
 
 Invoke the Lambda function:
 
-    aws lambda invoke --function-name timo-workshop-lambda  --output json /dev/stdout | jq .body
+    aws lambda invoke --function-name timo-workshop-lambda  --output text /dev/stdout
+    aws lambda invoke --function-name timo-workshop-lambda --query 'Payload' --output text /dev/stdout | jq
 
 ## Step 2c
 
 Use a label to attach the LifecyclePolicy to the bucket
 
-    kubectl delete -f step2/step-2a.yaml
-    diff step2/step-2a.yaml step2/step-2c.yaml
-    kubectl apply -f step2/step-2c.yaml
+    kubectl delete -f 2a.yaml
+    diff 2a.yaml 2c.yaml
+    kubectl apply -f 2c.yaml
     kubectl get managed
 
 ## Step 2d
 
 Now as an exercise please do the same to the Lambda function and the role.
 
-    cp step2/step-2b.yaml step2/step-2d.yaml
-    kubectl delete -f step2/step-2b.yaml
+    cp 2b.yaml 2d.yaml
+    kubectl delete -f 2b.yaml
 
-Make your changes in `step2/step-2d.yaml` and:
+Make your changes in `2d.yaml` and:
 
-    kubectl apply -f step2/step-2d.yaml
+    kubectl apply -f 2d.yaml
 
 Lets talk building blocks.
 
 ## Delete Managed Resources
 
-    kubectl delete -f step2/step-2a.yaml -f step2/step-2b.yaml
+    kubectl delete -f 2a.yaml -f 2b.yaml
 
 Now we now *everything there is to know* about managed resources and providers lets dive into XRD's and Composites
 and Claims.
 
 # Step 3 Lets make some compositions
 
+    cd step3
+
 ## Step 3a - Trying to create a Custom Object
 
-    kubectl apply -f step3/step3a.yaml
+    kubectl apply -f 3a.yaml
 
 ## Step 3b - Adding the CRD / XRD
 
-    kubectl apply -f step3/step3b.yaml
+    kubectl apply -f 3b.yaml
     kubectl get bucket.workshop.tkp.nl
 
 ## Step 3c - Basic implementation (KCL)
 
-    kubectl apply -f step3/step3c.yaml
+    kubectl apply -f 3c.yaml
     kubectl get function.pkg.crossplane.io -n crossplane-system
     kubectl get pod -n crossplane-system
     kubectl describe bucket.workshop.tkp.nl
@@ -145,38 +187,39 @@ and Claims.
 
 ## Step 3d - Auto Ready
 
-    diff step3c.yaml step3d.yaml
+    diff 3c.yaml 3d.yaml
 
-    kubectl apply -f step3d.yaml
+    kubectl apply -f 3d.yaml
     kubectl get function.pkg.crossplane.io -n crossplane-system
     kubectl get pod -n crossplane-system
     kubectl get bucket.workshop.tkp.nl
 
 ## Step 3e - Controller Reference
 
-    diff step3d.yaml step3e.yaml
-    kubectl apply -f step3e.yaml
+    diff 3d.yaml 3e.yaml
+    kubectl apply -f 3e.yaml
     kubectl get bucket.workshop.tkp.nl
 
 Make sure the managed resources are generated by our composition
 
-    kubectl delete -f step3a.yaml
+    kubectl delete -f 3a.yaml
     kubectl get managed
-    kubectl apply -f step3a.yaml
+    kubectl apply -f 3a.yaml
 
     kubectl get bucketversioning.s3.aws.upbound.io/timo-workshop-bucket-versioning -o json | jq .status.atProvider
 
 ## Step 3f - Environment Config
 
-    diff step3e.yaml step3f.yaml
+    diff 3e.yaml 3f.yaml
+    kubectl apply -f 3f.yaml
 
 ## Step 3g - Creating the Claim
 
     crossplane beta trace bucket.workshop.tkp.nl/timo-workshop-bucket
-    diff step3f.yaml step3g.yaml
+    diff 3f.yaml 3g.yaml
 
-    kubectl delete -f step3a.yaml
-    kubectl apply -f step3g.yaml
+    kubectl delete -f 3a.yaml
+    kubectl apply -f 3g.yaml
 
     crossplane beta trace bucketclaim.workshop.tkp.nl/timo-workshop-bucket
 
@@ -184,99 +227,43 @@ Make sure the managed resources are generated by our composition
 
 ## What do we want to expose as an API?
 
-## You make the implementation
+    cat 4a.yaml
 
-##################################
-# Composite Resource Definitions #
-##################################
+Now try to write the API by extending 4b.yaml 
 
-    cat compositions/sql-v1/definition.yaml
-    kubectl apply --filename compositions/sql-v1/definition.yaml
-    kubectl get compositeresourcedefinitions
-    kubectl get xrds
-    kubectl get crds | grep sql
-    kubectl explain sqls.devopstoolkitseries.com --recursive
+    cat 4b.yaml
+    kubectl apply -f 4b.yaml
+    kubectl apply -f 4a.yaml
 
-Learn about XRD's
-Learn about CRD's
+If you want to cheat look at what I fabricated:
 
-    cat examples/$HYPERSCALER-sql-v1.yaml
-    kubectl apply --filename examples/$HYPERSCALER-sql-v1.yaml
-    kubectl get sqls
-    kubectl get managed
-    kubectl get compositions
+    cat 4c.yaml
 
-As you can see the above has no effect.
+## Now try to create an implementation
 
+    cat 4d.yaml
+    kubectl apply -f 4d.yaml
+    kubectl delete -f 4a.yaml
+    kubectl apply -f 4a.yaml
 
-#########################
-# Defining Compositions #
-#########################
+This method of developing sucks, we can use crossplane render to help us:
+https://blog.upbound.io/composition-testing-patterns-rendering
 
-    cat compositions/sql-v1/$HYPERSCALER.yaml
-    ls -1 compositions/sql-v1
-    kubectl apply --filename compositions/sql-v1
+    crossplane render resource.yaml composition.yaml functions.yaml --extra-resources extra-resources.yaml
 
-Now lets see what is going on, i.e.:
+# Review of crossplane-claims project
 
-    kubectl get managed
-
-Any other commands?
-
-    crossplane beta trace sql my-db
-
-So lets fix it:
-
-    cat providers/sql-v1.yaml
-    kubectl apply --filename providers/sql-v1.yaml
-    kubectl get pkgrev
-    
-    crossplane beta trace sql my-db
-    crossplane beta trace sql my-db
-
-#####################################
-# Resource References and Selectors #
-#####################################
-
-Learn a bit about resource references: https://docs.crossplane.io/latest/concepts/compositions/#cross-resource-references
-
-    cat compositions/sql-v1/$HYPERSCALER.yaml
-    cat compositions/sql-v2/$HYPERSCALER.yaml
-    kubectl apply --filename compositions/sql-v2
-
-Delete the composition and watch the process
-
-    kubectl delete --filename examples/$HYPERSCALER-sql-v1.yaml
-    kubectl get managed
-
-
-#############################
-# Defining Composite Claims #
-#############################
-
-    cat compositions/sql-v5/definition.yaml
-    cat compositions/sql-v6/$HYPERSCALER.yaml
-    kubectl apply --filename compositions/sql-v6
-    cat examples/$HYPERSCALER-sql-v6.yaml
-    kubectl --namespace a-team apply --filename examples/$HYPERSCALER-sql-v6.yaml
-
-Let's check it out:
-
-    kubectl --namespace a-team get sqlclaims
-    crossplane beta trace sqlclaim my-db --namespace a-team
-    kubectl --namespace a-team get secrets
-
-
-#########################
-# Testing with Chainsaw #
-#########################
-
+Code completion
+Shared constructs
+Unit testing
+Chainsaw testing
 
 ######################
 # Destroy Everything #
 ######################
 
-    kubectl delete --namespace a-team sqlclaim/my-db 
-    kubectl get managed
-    kubectl patch database.postgresql.sql.crossplane.io $DB --patch '{"metadata":{"finalizers":[]}}' --type=merge
+    remove all claims
+    remove all composites
+    remove all maanged resources
+    remove kind cluster
     exit

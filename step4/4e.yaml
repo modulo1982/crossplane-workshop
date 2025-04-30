@@ -1,0 +1,120 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  labels:
+    provider: aws
+  name: lambdas
+spec:
+  compositeTypeRef:
+    apiVersion: workshop.tkp.nl/v1alpha1
+    kind: Lambda
+  mode: Pipeline
+  pipeline:
+    - functionRef:
+        name: function-environment-configs
+      step: environmentConfigs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - ref:
+                name: tkp
+    - functionRef:
+        name: function-kcl
+      step: create-resources
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
+        metadata:
+          name: basic
+        spec:
+          source: |-
+            import json
+            
+            env = option("params").ctx['apiextensions.crossplane.io/environment']
+            oxr = option("params").oxr
+            name = oxr.metadata.name
+            spec = oxr.spec
+            
+            # we need an implementation that renders a role.iam.aws.upbound.io/v1beta1 
+            # and a Function.lambda.aws.upbound.io/v1beta1
+            # KCL is easy: https://www.kcl-lang.io/docs/reference/lang/tour
+            
+            # documentation: https://marketplace.upbound.io/providers/upbound/provider-aws-lambda/v1.20.0/resources/lambda.aws.upbound.io/Function/v1beta2
+            $lambda = {
+                apiVersion = "lambda.aws.upbound.io/v1beta1"
+                kind = "Function"
+                metadata = {
+                    name = name
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "function"
+                    } 
+                }
+                spec = {
+                    forProvider = {
+                        region = env["aws.region"]
+                        tags = spec.tags
+                        handler: "jokes.lambda_handler" # TODO: HARDCODED?
+                        packageType: "Zip"
+                        roleSelector.matchControllerRef = True
+                        runtime: 'python3.9' # TODO: HARDCODED?
+                        s3Bucket: 'timo-workshop-bucket' # TODO: HARDCODED?
+                        s3Key: 'jokes_function.zip' # TODO: HARDCODED?
+                        timeout: 60
+                    }
+                }
+            }
+
+            assumeRolePolicy = {
+                Version = "2012-10-17"
+                Statement = [
+                    {
+                        Effect = "Allow"
+                        Principal = {
+                            Service = "lambda.amazonaws.com"
+                        }
+                        Action = "sts:AssumeRole"
+                    }
+                ]
+            }
+            
+            inlinePolicy = {
+                Version = "2012-10-17"
+                Statement = [
+                    {
+                        Effect = "Allow"
+                        Action =  "s3:GetObject"
+                        Resource = "arn:aws:s3:::timo-workshop-bucket/jokes.txt" # TODO: HARDCODED?
+                    }
+                ]
+            }
+
+            role = {
+                apiVersion = "iam.aws.upbound.io/v1beta1"
+                kind = "Role"
+                metadata = {
+                    name = name
+                    annotations = {
+                        "krm.kcl.dev/composition-resource-name" = "role"
+                    } 
+                }
+                spec = {
+                    forProvider = {
+                        region = env["aws.region"]
+                        tags = spec.tags
+                        assumeRolePolicy = json.encode(assumeRolePolicy, indent=2)
+                        inlinePolicy = [
+                            { 
+                                name: "inlinePolicy"
+                                policy = json.encode(inlinePolicy, indent=2)
+                            }
+                        ]
+                    }
+                }
+            }
+
+            items = [$lambda, role]
+    - functionRef:
+        name: function-auto-ready
+      step: automatically-detect-ready-composed-resources
